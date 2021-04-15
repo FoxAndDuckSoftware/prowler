@@ -15,27 +15,39 @@ CHECK_ID_extra725="7.25"
 CHECK_TITLE_extra725="[extra725] Check if S3 buckets have Object-level logging enabled in CloudTrail (Not Scored) (Not part of CIS benchmark)"
 CHECK_SCORED_extra725="NOT_SCORED"
 CHECK_TYPE_extra725="EXTRA"
+CHECK_SEVERITY_extra725="Medium"
 CHECK_ASFF_RESOURCE_TYPE_extra725="AwsS3Bucket"
 CHECK_ALTERNATE_check725="extra725"
+CHECK_SERVICENAME_extra725="s3"
+CHECK_RISK_extra725='If logs are not enabled; monitoring of service use and threat analysis is not possible.'
+CHECK_REMEDIATION_extra725='Enable logs. Create an S3 lifecycle policy. Define use cases; metrics and automated responses where applicable.'
+CHECK_DOC_extra725='https://docs.aws.amazon.com/AmazonS3/latest/userguide/enable-cloudtrail-logging-for-s3.html'
+CHECK_CAF_EPIC_extra725='Logging and Monitoring'
 
 # per Object-level logging is not configured at Bucket level but at CloudTrail trail level
 extra725(){
   # "Check if S3 buckets have Object-level logging enabled in CloudTrail (Not Scored) (Not part of CIS benchmark)"
   textInfo "Looking for S3 Buckets Object-level logging information in all trails...  "
 
-  LIST_OF_BUCKETS=$($AWSCLI s3api list-buckets $PROFILE_OPT --region $REGION --query 'Buckets[*].{Name:Name}'  --output text)
-  LIST_OF_TRAILS=$($AWSCLI cloudtrail describe-trails $PROFILE_OPT --region $REGION --query 'trailList[].TrailARN' --output text)
+  LIST_OF_BUCKETS=$($AWSCLI s3api list-buckets $PROFILE_OPT --region $REGION --query 'Buckets[*].{Name:Name}' --output text 2>&1)
+  if [[ $(echo "$LIST_OF_BUCKETS" | grep AccessDenied) ]]; then
+    textFail "Access Denied trying to list buckets"
+    return
+  fi
+  LIST_OF_TRAILS=$($AWSCLI cloudtrail describe-trails $PROFILE_OPT --region $REGION --query 'trailList[].TrailARN' --output text 2>&1)
+  if [[ $(echo "$LIST_OF_TRAILS" | grep AccessDenied) ]]; then
+    textFail "Access Denied trying to describe trails"
+    return
+  fi
   if [[ $LIST_OF_BUCKETS ]]; then
-    for bucketName in $LIST_OF_BUCKETS;do
+    for bucketName in $LIST_OF_BUCKETS; do
       if [[ $LIST_OF_TRAILS ]]; then
         BUCKET_ENABLED_TRAILS=()
+
         for trail in $LIST_OF_TRAILS; do
           BUCKET_ENABLED_IN_TRAIL=$($AWSCLI cloudtrail get-event-selectors --region $REGION $PROFILE_OPT --trail-name $trail --query "EventSelectors[*].DataResources[?Type == \`AWS::S3::Object\`].Values" --output text |xargs -n1| grep -E "^arn:${AWS_PARTITION}:s3:::$bucketName/\S*$|^arn:${AWS_PARTITION}:s3$|^arn:${AWS_PARTITION}:s3:::$")
           if [[ $BUCKET_ENABLED_IN_TRAIL ]]; then
             BUCKET_ENABLED_TRAILS+=($trail)
-            # textPass "$regx: S3 bucket $bucketName has Object-level logging enabled in trail $trail" "$regx"
-          #else
-            # textFail "$regx: S3 bucket $bucketName has Object-level logging disabled" "$regx"
           fi
         done
 
